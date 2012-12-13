@@ -80,6 +80,28 @@
                 }
             };
 
+            var Shooter = function(options){
+                this.onFire = options.onFire;
+                this.cooldown = options.cooldown;
+
+                this.cooldownRemaining = 0;
+                this.firing = false;
+            };
+            Shooter.prototype.fireStart = function(){
+                this.firing = true;
+            };
+            Shooter.prototype.fireStop = function(){
+                this.firing = false;
+            };
+            Shooter.prototype.update = function(delta){
+                this.cooldownRemaining -= delta;
+                this.cooldownRemaining = Math.max(0, this.cooldownRemaining);
+                if (this.firing && this.cooldownRemaining <= 0) {
+                    this.cooldownRemaining = this.cooldown;
+                    this.onFire();
+                }
+            };
+
             var VolumeGrid = function(options) {
                 var segmentLength = options.segmentLength,
                     x = options.x,
@@ -187,8 +209,9 @@
             };
             GridLights.prototype = Object.create( THREE.Object3D.prototype );
 
-            var camera, scene, renderer, planetarium, light, grid, gridLights, controls;
+            var camera, scene, renderer, planetarium, shooter, light, grid, gridLights, controls;
             var SHADOW_MAP_WIDTH = 2048, SHADOW_MAP_HEIGHT = 1024;
+            var fireCooldown = 0.1;
             var targetPos = new THREE.Vector3(0, 0, -5);
             var clock = new THREE.Clock();
             var lifetime = 20, fireSpeed = 5, linearDampening = 0.5;
@@ -210,7 +233,7 @@
 
                 controls = new THREE.FirstPersonControls( camera );
                 controls.movementSpeed = 2;
-                controls.lookSpeed = Math.PI;
+                controls.lookSpeed = 2 * Math.PI;
 
                 scene = new THREE.Scene();
 
@@ -219,6 +242,15 @@
                     lifetime: lifetime,
                     fireSpeed: fireSpeed,
                     linearDampening: linearDampening
+                });
+                shooter = new Shooter({
+                    cooldown: fireCooldown,
+                    onFire: function(){
+                        var position = camera.position.clone();
+                        var direction = new THREE.Vector3(0, 0, -1);
+                        camera.matrixWorld.rotateAxis(direction);
+                        planetarium.firePlanet(position, direction);
+                    }
                 });
 
                 light = new THREE.SpotLight( 0xFFFFFF, 1, 0, Math.PI, 1 );
@@ -259,6 +291,7 @@
 
                 window.addEventListener( 'resize', onWindowResize, false );
                 renderer.domElement.addEventListener( 'mousedown', onMouseDown, false );
+                renderer.domElement.addEventListener( 'mouseup', onMouseUp, false );
 
             };
 
@@ -272,12 +305,11 @@
             };
 
             function onMouseDown() {
+                shooter.fireStart();
+            };
 
-                var position = camera.position.clone();
-                var direction = new THREE.Vector3(0, 0, -1);
-                camera.matrixWorld.rotateAxis(direction);
-                planetarium.firePlanet(position, direction);
-
+            function onMouseUp() {
+                shooter.fireStop();
             };
 
             function animate() {
@@ -289,6 +321,7 @@
                 light.position.add(camera.position, camera.matrixRotationWorld.multiplyVector3(new THREE.Vector3(0,1,1)));
                 light.target.position = camera.matrixWorld.multiplyVector3(targetPos.clone());
 
+                shooter.update(delta);
                 planetarium.update(delta);
                 controls.update(delta);
                 renderer.render( scene, camera );
