@@ -18,7 +18,7 @@
 
         <script>
             var camera, scene, renderer, planetarium, shooter, light, grid,
-                gridLights, controls, projector, simulator;
+                gridLights, controls, projector, simulator, holdLight;
             var SHADOW_MAP_WIDTH = 2048, SHADOW_MAP_HEIGHT = 1024;
             var fireCooldown = 0.25;
             var targetPos = new THREE.Vector3(0, 0, -5);
@@ -27,6 +27,7 @@
             var gridX = 5, gridY = 5, gridZ = 5, gridSegLength = 5, gridThickness = 0.05;
             var lgridX = 2, lgridY = 2, lgridZ = 2, lgridSegLength = 12.5, intensity = 1, distance = 12.5;
             var holdDistance = 2, springRestDistance = 1, springConstant = 8;
+            var holdLightDistance = 4, holdLightColor = 0xFF9999;
 
             var Planetarium = function(options){
                 this.lifetime = options.lifetime;
@@ -320,9 +321,6 @@
 
                 light.position = camera.position.clone();
                 light.target.position = targetPos;
-                scene.add(light);
-                var ambient = new THREE.AmbientLight(0x444444);
-                scene.add( ambient );
 
                 grid = new VolumeGrid({
                     segmentLength: gridSegLength,
@@ -340,9 +338,14 @@
                     distance: distance,
                     scene: scene
                 });
+
+                var ambient = new THREE.AmbientLight(0x444444);
+                holdLight = new THREE.PointLight(holdLightColor, 0, holdLightDistance);
+                scene.add(ambient);
+                scene.add(light);
+                scene.add(holdLight);
                 scene.add(grid);
                 scene.add(gridLights);
-
 
                 window.addEventListener( 'resize', onWindowResize, false );
                 renderer.domElement.addEventListener( 'mousedown', onMouseDown, false );
@@ -397,6 +400,7 @@
                     shooter.fireStop();
                 } else {
                     simulator.setFocus(null);
+                    holdLight.intensity = 0;
                 }
             };
 
@@ -412,6 +416,8 @@
                 // Reset focus target if currently holding
                 if (simulator.focus) {
                     simulator.setTarget(camera.matrixWorld.multiplyVector3(new THREE.Vector3(0, 0, -holdDistance)));
+                    holdLight.intensity = 1;
+                    holdLight.position.copy(camera.position);
                 }
 
                 shooter.update(delta);
