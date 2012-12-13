@@ -156,6 +156,7 @@
                 var objects = this.objects;
                 var radius = this.sphereRadius;
                 var toO1 = new THREE.Vector3();
+                var toO1Copy = new THREE.Vector3();
                 var axis1 = new THREE.Vector3();
                 var axis2 = new THREE.Vector3();
                 for (var i = 0, end = objects.length; i < end; ++i) {
@@ -171,6 +172,8 @@
 
                         toO1.sub(o1.position, o2.position);
                         var distSq = toO1.lengthSq();
+                        toO1.normalize();
+                        toO1Copy.copy(toO1);
                         if (distSq < minDistSq) {
                             // Resolve
                             var dist = Math.sqrt(distSq);
@@ -178,13 +181,22 @@
 
                             // Move objects out
                             axis1.copy(toO1);
-                            axis1.normalize();
                             axis2.copy(axis1);
                             axis2.multiplyScalar(-1);
                             var r1r = 1 - rad1 / minDist;
                             var r2r = 1 - rad2 / minDist;
                             o1.position.addSelf(axis1.multiplyScalar(depth * r1r));
                             o2.position.addSelf(axis2.multiplyScalar(depth * r2r));
+
+                            // Update velocities
+                            var o1v = o1.velocity;
+                            var o2v = o2.velocity;
+                            var o1vPenComp = o1v.dot(toO1);
+                            var o2vPenComp = o2v.dot(toO1);
+                            o1vPenComp = Math.min(0, o1vPenComp);
+                            o2vPenComp = Math.max(0, o2vPenComp);
+                            o1v.subSelf(toO1.multiplyScalar((1 + r1r) * o1vPenComp));
+                            o2v.subSelf(toO1Copy.multiplyScalar((1 + r2r) * o2vPenComp));
                         }
                     }
                 }
