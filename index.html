@@ -511,6 +511,7 @@
                     simulator.setTarget(camera.matrixWorld.multiplyVector3(new THREE.Vector3(0, 0, -holdDistance)));
                     holdLight.intensity = 1;
                     holdLight.position.copy(camera.position);
+                    simulator.focus.lifetime = Math.min(planetarium.lifetime, simulator.focus.lifetime + delta * 8);
                 }
 
                 shooter.update(delta);
