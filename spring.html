@@ -399,6 +399,21 @@
                 if (event.which === 1) {
                     shooter.fireStop();
                 } else {
+                    // Throw all objects away
+                    if (simulator.focus) {
+                    var planets = planetarium.planets;
+                        for (var i = 0, end = planets.length; i < end; ++i) {
+                            var planet = planets[i];
+
+                            planet.velocity.addSelf(
+                            new THREE.Vector3().
+                                sub(planet.position, camera.position).
+                                normalize().
+                                multiplyScalar(4)
+                            );
+                        }
+                    }
+
                     simulator.setFocus(null);
                     holdLight.intensity = 0;
                 }
