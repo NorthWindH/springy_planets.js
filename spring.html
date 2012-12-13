@@ -34,15 +34,17 @@
 
                 this.planetMaterial = new THREE.MeshPhongMaterial( {
                     map: texture,
-                    specularMap: specTex,
-                    bumpMap: bumpTex
+                    specularMap: specTex
                 });
 
-                this.planetGeometry = new THREE.SphereGeometry( 1, 32, 32 );
+                this.planetGeometry = new THREE.SphereGeometry( 0.5, 32, 32 );
             };
 
             Planetarium.prototype.firePlanet = function(position, direction){
                 var material = this.planetMaterial.clone();
+                var colorHex = Math.floor(Math.random() * 0x666666);
+                material.color.setHex(colorHex);
+                material.ambient.setHex(colorHex);
                 var planet = new THREE.Mesh(this.planetGeometry, material);
                 scene.add(planet);
                 this.planets.push(planet);
@@ -68,35 +70,41 @@
                         // Integrate forward
                         planet.velocity.multiplyScalar(1 - (this.linearDampening * delta));
                         planet.position.addSelf(planet.velocity.clone().multiplyScalar(delta));
-                        //var scale = planet.lifetime / this.lifetime;
-                        //planet.scale.set(scale, scale, scale);
+                        var scale = planet.lifetime / this.lifetime;
+                        planet.scale.set(scale, scale, scale);
                     }
                 }
                 for (var i = 0, end = toRemove.length; i < end; ++i) {
+                    this.planets[i].deallocate();
                     this.planets.splice(toRemove[i], 1);
                 }
             };
 
-            var VolumeGrid = function(segmentLength, x, y, z, thickness) {
-                THREE.Object3D.call(this);
+            var VolumeGrid = function(options) {
+                var segmentLength = options.segmentLength,
+                    x = options.x,
+                    y = options.y,
+                    z = options.z,
+                    thickness = options.thickness;
 
                 var segMesh = new THREE.CubeGeometry(1, 1, 1);
+                var outMesh = new THREE.Geometry();
 
                 var material = new THREE.MeshPhongMaterial( {
                     color: 0xFFFFFF,
                     opacity: 0.4
                 });
 
-                var position = new THREE.Vector3();
                 var startX = -0.5 * x * segmentLength;
                 var startY = -0.5 * y * segmentLength;
                 var startZ = -0.5 * z * segmentLength;
+                var position = new THREE.Vector3();
                 for (var i = 0; i <= x; ++i) {
                     for (var j = 0; j <= y; ++j) {
                         for (var k = 0; k <= z; ++k) {
-                            var segx = new THREE.Mesh( segMesh, material );
-                            var segy = new THREE.Mesh( segMesh, material );
-                            var segz = new THREE.Mesh( segMesh, material );
+                            var segx = new THREE.Mesh( segMesh );
+                            var segy = new THREE.Mesh( segMesh );
+                            var segz = new THREE.Mesh( segMesh );
 
                             segx.scale.y = thickness;
                             segx.scale.z = thickness;
@@ -118,21 +126,74 @@
                             segy.position.copy(position);
                             segz.position.copy(position);
 
-                            this.add(segx);
-                            this.add(segy);
-                            this.add(segz);
+                            THREE.GeometryUtils.merge(outMesh, segx);
+                            THREE.GeometryUtils.merge(outMesh, segy);
+                            THREE.GeometryUtils.merge(outMesh, segz);
+                        }
+                    }
+                }
+
+                THREE.Mesh.call(this, outMesh, material);
+            };
+            VolumeGrid.prototype = Object.create( THREE.Mesh.prototype );
+
+            var GridLights = function(options) {
+                THREE.Object3D.call(this);
+
+                var segmentLength = options.segmentLength,
+                    x = options.x,
+                    y = options.y,
+                    z = options.z,
+                    intensity = options.intensity,
+                    distance = options.distance,
+                    scene = options.scene;
+
+                var lightType = 0;
+                var startX = -0.5 * x * segmentLength;
+                var startY = -0.5 * y * segmentLength;
+                var startZ = -0.5 * z * segmentLength;
+                for (var i = 0; i <= x; ++i) {
+                    for (var j = 0; j <= y; ++j) {
+                        for (var k = 0; k <= z; ++k) {
+                            var lightColor;
+                            switch (lightType) {
+                                case 0:
+                                    lightColor = 0xFF0000;
+                                    break;
+                                case 1:
+                                    lightColor = 0x00FF00;
+                                    break;
+                                case 2:
+                                    lightColor = 0x0000FF;
+                                    break;
+                            }
+                            ++lightType;
+                            lightType = lightType % 3;
+                            var light = new THREE.PointLight(
+                                lightColor,
+                                intensity,
+                                distance
+                            );
+                            light.position.set(
+                                startX + i * segmentLength,
+                                startY + j * segmentLength,
+                                startZ + k * segmentLength
+                            );
+                            this.add(light);
+                            scene.add(light);
                         }
                     }
                 }
             };
-            VolumeGrid.prototype = Object.create( THREE.Object3D.prototype );
+            GridLights.prototype = Object.create( THREE.Object3D.prototype );
 
-            var camera, scene, renderer, planetarium, light, grid, controls;
+            var camera, scene, renderer, planetarium, light, grid, gridLights, controls;
             var SHADOW_MAP_WIDTH = 2048, SHADOW_MAP_HEIGHT = 1024;
             var targetPos = new THREE.Vector3(0, 0, -5);
             var clock = new THREE.Clock();
-            var lifetime = 20, fireSpeed = 2.5, linearDampening = 0.5;
-            var gridX = 10, gridY = 10, gridZ = 10, gridSegLength = 5, gridThickness = 0.01;
+            var lifetime = 20, fireSpeed = 5, linearDampening = 0.5;
+            var gridX = 5, gridY = 5, gridZ = 5, gridSegLength = 5, gridThickness = 0.05;
+            var lgridX = 2, lgridY = 2, lgridZ = 2, lgridSegLength = 12.5, intensity = 1, distance = 12.5;
 
             init();
             animate();
@@ -177,8 +238,24 @@
                 var ambient = new THREE.AmbientLight(0x444444);
                 scene.add( ambient );
 
-                grid = new VolumeGrid(gridSegLength, gridX, gridY, gridZ, gridThickness);
+                grid = new VolumeGrid({
+                    segmentLength: gridSegLength,
+                    x: gridX,
+                    y: gridY,
+                    z: gridZ,
+                    thickness: gridThickness
+                });
+                gridLights = new GridLights({
+                    segmentLength: lgridSegLength,
+                    x: lgridX,
+                    y: lgridY,
+                    z: lgridZ,
+                    intensity: intensity,
+                    distance: distance,
+                    scene: scene
+                });
                 scene.add(grid);
+                scene.add(gridLights);
 
                 window.addEventListener( 'resize', onWindowResize, false );
                 renderer.domElement.addEventListener( 'mousedown', onMouseDown, false );
