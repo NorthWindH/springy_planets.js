@@ -17,6 +17,17 @@
         <script src="FirstPersonControls.js"></script>
 
         <script>
+            var camera, scene, renderer, planetarium, shooter, light, grid,
+                gridLights, controls, projector, simulator;
+            var SHADOW_MAP_WIDTH = 2048, SHADOW_MAP_HEIGHT = 1024;
+            var fireCooldown = 0.25;
+            var targetPos = new THREE.Vector3(0, 0, -5);
+            var clock = new THREE.Clock();
+            var lifetime = 20, fireSpeed = 5, linearDampening = 0.5;
+            var gridX = 5, gridY = 5, gridZ = 5, gridSegLength = 5, gridThickness = 0.05;
+            var lgridX = 2, lgridY = 2, lgridZ = 2, lgridSegLength = 12.5, intensity = 1, distance = 12.5;
+            var holdDistance = 2;
+
             var Planetarium = function(options){
                 this.lifetime = options.lifetime;
                 this.fireSpeed = options.fireSpeed;
@@ -42,7 +53,7 @@
 
             Planetarium.prototype.firePlanet = function(position, direction){
                 var material = this.planetMaterial.clone();
-                var colorHex = Math.floor(Math.random() * 0x666666);
+                var colorHex = 0x777777 + Math.floor(Math.random() * 0x666666);
                 material.color.setHex(colorHex);
                 material.ambient.setHex(colorHex);
                 var planet = new THREE.Mesh(this.planetGeometry, material);
@@ -77,6 +88,37 @@
                 for (var i = 0, end = toRemove.length; i < end; ++i) {
                     this.planets[i].deallocate();
                     this.planets.splice(toRemove[i], 1);
+                }
+            };
+
+            var SpringSimulator = function(options){
+                this.objects = options.objects;
+                this.restDistance = options.restDistance;
+                this.constant = options.constant;
+            };
+            SpringSimulator.prototype.setFocus = function(object){
+                this.focus = object;
+            };
+            SpringSimulator.prototype.setTarget = function(targetPosition){
+                this.target = targetPosition.clone();
+            };
+            SpringSimulator.prototype.update = function(delta){
+                var focus = this.focus;
+
+                // Are we focussed and object still alive?
+                if (focus && focus.lifetime > 0) {
+
+                    // Move object toward target
+                    if (this.target) {
+                        var posSoon = focus.position.clone().addSelf(focus.velocity.clone().multiplyScalar(0.5));
+                        var force = new THREE.Vector3();
+                        force.sub(this.target, posSoon).multiplyScalar(4);
+
+                        // Yep, integrating velocity right here :)
+                        focus.velocity.addSelf(force.multiplyScalar(delta));
+                    }
+                } else {
+                    this.setFocus(null);
                 }
             };
 
@@ -209,15 +251,6 @@
             };
             GridLights.prototype = Object.create( THREE.Object3D.prototype );
 
-            var camera, scene, renderer, planetarium, shooter, light, grid, gridLights, controls;
-            var SHADOW_MAP_WIDTH = 2048, SHADOW_MAP_HEIGHT = 1024;
-            var fireCooldown = 0.1;
-            var targetPos = new THREE.Vector3(0, 0, -5);
-            var clock = new THREE.Clock();
-            var lifetime = 20, fireSpeed = 5, linearDampening = 0.5;
-            var gridX = 5, gridY = 5, gridZ = 5, gridSegLength = 5, gridThickness = 0.05;
-            var lgridX = 2, lgridY = 2, lgridZ = 2, lgridSegLength = 12.5, intensity = 1, distance = 12.5;
-
             init();
             animate();
 
@@ -229,7 +262,7 @@
                 renderer.shadowMapSoft = true;
                 document.body.appendChild( renderer.domElement );
 
-                camera = new THREE.PerspectiveCamera( 70, window.innerWidth / window.innerHeight, 0.5, 300 );
+                camera = new THREE.PerspectiveCamera( 70, window.innerWidth / window.innerHeight, 0.1, 300 );
 
                 controls = new THREE.FirstPersonControls( camera );
                 controls.movementSpeed = 2;
@@ -245,14 +278,15 @@
                 });
                 shooter = new Shooter({
                     cooldown: fireCooldown,
-                    onFire: function(){
-                        var position = camera.position.clone();
-                        var direction = new THREE.Vector3(0, 0, -1);
-                        camera.matrixWorld.rotateAxis(direction);
-                        planetarium.firePlanet(position, direction);
-                    }
+                    onFire: onFire
+                });
+                simulator = new SpringSimulator({
+                    objects: planetarium.planets,
+                    restDistance: 1,
+                    constant: 1
                 });
 
+                projector = new THREE.Projector();
                 light = new THREE.SpotLight( 0xFFFFFF, 1, 0, Math.PI, 1 );
                 light.castShadow = true;
                 light.shadowCameraNear = camera.near;
@@ -289,6 +323,7 @@
                 scene.add(grid);
                 scene.add(gridLights);
 
+
                 window.addEventListener( 'resize', onWindowResize, false );
                 renderer.domElement.addEventListener( 'mousedown', onMouseDown, false );
                 renderer.domElement.addEventListener( 'mouseup', onMouseUp, false );
@@ -304,12 +339,45 @@
 
             };
 
-            function onMouseDown() {
-                shooter.fireStart();
+            function onFire() {
+                var position = camera.position.clone();
+                var direction = new THREE.Vector3(Math.random() * 0.5 - 0.25, Math.random() * 0.5 - 0.25, -1);
+                camera.matrixWorld.rotateAxis(direction);
+                planetarium.firePlanet(position, direction);
+            };
+
+            function onMouseDown(event) {
+                if (event.which === 1) {
+                    shooter.fireStart();
+                } else {
+
+                    // Perform intersection
+                    var mouse = new THREE.Vector2();
+                    mouse.x = ( event.clientX / window.innerWidth ) * 2 - 1;
+                    mouse.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
+
+                    var vector = new THREE.Vector3( mouse.x, mouse.y, 0.5 );
+                    projector.unprojectVector( vector, camera );
+
+                    var ray = new THREE.Ray( camera.position, vector.subSelf( camera.position ).normalize() );
+                    var intersects = ray.intersectObjects( planetarium.planets );
+
+                    if ( intersects.length > 0 ) {
+
+                        controls.enabled = false;
+
+                        var planet = intersects[ 0 ].object;
+                        simulator.setFocus(planet);
+                    }
+                }
             };
 
             function onMouseUp() {
-                shooter.fireStop();
+                if (event.which === 1) {
+                    shooter.fireStop();
+                } else {
+                    simulator.setFocus(null);
+                }
             };
 
             function animate() {
@@ -321,7 +389,13 @@
                 light.position.add(camera.position, camera.matrixRotationWorld.multiplyVector3(new THREE.Vector3(0,1,1)));
                 light.target.position = camera.matrixWorld.multiplyVector3(targetPos.clone());
 
+                // Reset focus target if currently holding
+                if (simulator.focus) {
+                    simulator.setTarget(camera.matrixWorld.multiplyVector3(new THREE.Vector3(0, 0, -holdDistance)));
+                }
+
                 shooter.update(delta);
+                simulator.update(delta);
                 planetarium.update(delta);
                 controls.update(delta);
                 renderer.render( scene, camera );
