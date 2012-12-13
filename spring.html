@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <title>three.js webgl - geometry - cube</title>
+        <meta charset="utf-8">
+        <style>
+            body {
+                margin: 0px;
+                background-color: #000000;
+                overflow: hidden;
+            }
+        </style>
+    </head>
+    <body>
+
+        <script src="three.min.js"></script>
+        <script src="FirstPersonControls.js"></script>
+
+        <script>
+            var Planetarium = function(options){
+                this.lifetime = options.lifetime;
+                this.fireSpeed = options.fireSpeed;
+                this.linearDampening = options.linearDampening;
+                this.scene = options.scene;
+
+                this.planets = new Array();
+
+                var texture = THREE.ImageUtils.loadTexture( 'textures/planets/moon_1024.jpg' );
+                texture.anisotropy = renderer.getMaxAnisotropy();
+                var specTex = THREE.ImageUtils.loadTexture( 'textures/planets/moon_spec_1024.jpg' );
+                specTex.anisotropy = renderer.getMaxAnisotropy();
+                var bumpTex = THREE.ImageUtils.loadTexture( 'textures/planets/moon_bump_1024.jpg' );
+                bumpTex.anisotropy = renderer.getMaxAnisotropy();
+
+                this.planetMaterial = new THREE.MeshPhongMaterial( {
+                    map: texture,
+                    specularMap: specTex,
+                    bumpMap: bumpTex
+                });
+
+                this.planetGeometry = new THREE.SphereGeometry( 1, 32, 32 );
+            };
+
+            Planetarium.prototype.firePlanet = function(position, direction){
+                var material = this.planetMaterial.clone();
+                var planet = new THREE.Mesh(this.planetGeometry, material);
+                scene.add(planet);
+                this.planets.push(planet);
+
+                planet.lifetime = this.lifetime;
+                planet.position = position;
+                planet.velocity = direction.clone();
+                planet.velocity.multiplyScalar(this.fireSpeed);
+                planet.castShadow = true;
+                planet.receiveShadow = true;
+            };
+
+            Planetarium.prototype.update = function(delta){
+                var planets = this.planets;
+                var toRemove = new Array();
+                for (var i = 0, end = planets.length; i < end; ++i) {
+                    var planet = planets[i];
+                    planet.lifetime -= delta;
+                    if (planet.lifetime <= 0) {
+                        this.scene.remove(planet);
+                        toRemove.splice(0,0,i);
+                    } else {
+                        // Integrate forward
+                        planet.velocity.multiplyScalar(1 - (this.linearDampening * delta));
+                        planet.position.addSelf(planet.velocity.clone().multiplyScalar(delta));
+                        //var scale = planet.lifetime / this.lifetime;
+                        //planet.scale.set(scale, scale, scale);
+                    }
+                }
+                for (var i = 0, end = toRemove.length; i < end; ++i) {
+                    this.planets.splice(toRemove[i], 1);
+                }
+            };
+
+            var VolumeGrid = function(segmentLength, x, y, z, thickness) {
+                THREE.Object3D.call(this);
+
+                var segMesh = new THREE.CubeGeometry(1, 1, 1);
+
+                var material = new THREE.MeshPhongMaterial( {
+                    color: 0xFFFFFF,
+                    opacity: 0.4
+                });
+
+                var position = new THREE.Vector3();
+                var startX = -0.5 * x * segmentLength;
+                var startY = -0.5 * y * segmentLength;
+                var startZ = -0.5 * z * segmentLength;
+                for (var i = 0; i <= x; ++i) {
+                    for (var j = 0; j <= y; ++j) {
+                        for (var k = 0; k <= z; ++k) {
+                            var segx = new THREE.Mesh( segMesh, material );
+                            var segy = new THREE.Mesh( segMesh, material );
+                            var segz = new THREE.Mesh( segMesh, material );
+
+                            segx.scale.y = thickness;
+                            segx.scale.z = thickness;
+                            segy.scale.x = thickness;
+                            segy.scale.z = thickness;
+                            segz.scale.x = thickness;
+                            segz.scale.y = thickness;
+
+                            segx.scale.x = segmentLength;
+                            segy.scale.y = segmentLength;
+                            segz.scale.z = segmentLength;
+
+                            position.set(
+                                startX + i * segmentLength,
+                                startY + j * segmentLength,
+                                startZ + k * segmentLength
+                            );
+                            segx.position.copy(position);
+                            segy.position.copy(position);
+                            segz.position.copy(position);
+
+                            this.add(segx);
+                            this.add(segy);
+                            this.add(segz);
+                        }
+                    }
+                }
+            };
+            VolumeGrid.prototype = Object.create( THREE.Object3D.prototype );
+
+            var camera, scene, renderer, planetarium, light, grid, controls;
+            var SHADOW_MAP_WIDTH = 2048, SHADOW_MAP_HEIGHT = 1024;
+            var targetPos = new THREE.Vector3(0, 0, -5);
+            var clock = new THREE.Clock();
+            var lifetime = 20, fireSpeed = 2.5, linearDampening = 0.5;
+            var gridX = 10, gridY = 10, gridZ = 10, gridSegLength = 5, gridThickness = 0.01;
+
+            init();
+            animate();
+
+            function init() {
+
+                renderer = new THREE.WebGLRenderer();
+                renderer.setSize( window.innerWidth, window.innerHeight );
+                renderer.shadowMapEnabled = true;
+                renderer.shadowMapSoft = true;
+                document.body.appendChild( renderer.domElement );
+
+                camera = new THREE.PerspectiveCamera( 70, window.innerWidth / window.innerHeight, 0.5, 300 );
+
+                controls = new THREE.FirstPersonControls( camera );
+                controls.movementSpeed = 2;
+                controls.lookSpeed = Math.PI;
+
+                scene = new THREE.Scene();
+
+                planetarium = new Planetarium({
+                    scene: scene,
+                    lifetime: lifetime,
+                    fireSpeed: fireSpeed,
+                    linearDampening: linearDampening
+                });
+
+                light = new THREE.SpotLight( 0xFFFFFF, 1, 0, Math.PI, 1 );
+                light.castShadow = true;
+                light.shadowCameraNear = camera.near;
+                light.shadowCameraFar = camera.far;
+                light.shadowCameraFov = 50;
+                light.shadowBias = 0.0001;
+                light.shadowDarkness = 0.5;
+
+                light.shadowMapWidth = SHADOW_MAP_WIDTH;
+                light.shadowMapHeight = SHADOW_MAP_HEIGHT;
+
+                light.position = camera.position.clone();
+                light.target.position = targetPos;
+                scene.add(light);
+                var ambient = new THREE.AmbientLight(0x444444);
+                scene.add( ambient );
+
+                grid = new VolumeGrid(gridSegLength, gridX, gridY, gridZ, gridThickness);
+                scene.add(grid);
+
+                window.addEventListener( 'resize', onWindowResize, false );
+                renderer.domElement.addEventListener( 'mousedown', onMouseDown, false );
+
+            };
+
+            function onWindowResize() {
+
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+
+                renderer.setSize( window.innerWidth, window.innerHeight );
+
+            };
+
+            function onMouseDown() {
+
+                var position = camera.position.clone();
+                var direction = new THREE.Vector3(0, 0, -1);
+                camera.matrixWorld.rotateAxis(direction);
+                planetarium.firePlanet(position, direction);
+
+            };
+
+            function animate() {
+
+                var delta = clock.getDelta();
+
+                requestAnimationFrame( animate );
+
+                light.position.add(camera.position, camera.matrixRotationWorld.multiplyVector3(new THREE.Vector3(0,1,1)));
+                light.target.position = camera.matrixWorld.multiplyVector3(targetPos.clone());
+
+                planetarium.update(delta);
+                controls.update(delta);
+                renderer.render( scene, camera );
+
+            };
+
+        </script>
+
+    </body>
+</html>
