@@ -15,6 +15,7 @@
 
         <script src="three.min.js"></script>
         <script src="FirstPersonControls.js"></script>
+        <script src="stats.min.js"></script>
 
         <script>
             var camera, scene, renderer, planetarium, shooter, light, grid,
@@ -28,6 +29,7 @@
             var lgridX = 2, lgridY = 2, lgridZ = 2, lgridSegLength = 12.5, intensity = 1, distance = 12.5;
             var holdDistance = 2, springRestDistance = 1, springConstant = 8;
             var holdLightDistance = 4, holdLightColor = 0xFF9999;
+            var stats;
 
             var Planetarium = function(options){
                 this.lifetime = options.lifetime;
@@ -277,11 +279,14 @@
 
             function init() {
 
+                container = document.createElement('div');
+                document.body.appendChild(container);
+
                 renderer = new THREE.WebGLRenderer();
                 renderer.setSize( window.innerWidth, window.innerHeight );
                 renderer.shadowMapEnabled = true;
                 renderer.shadowMapSoft = true;
-                document.body.appendChild( renderer.domElement );
+                container.appendChild(renderer.domElement);
 
                 camera = new THREE.PerspectiveCamera( 70, window.innerWidth / window.innerHeight, 0.1, 300 );
 
@@ -347,10 +352,22 @@
                 scene.add(grid);
                 scene.add(gridLights);
 
-                window.addEventListener( 'resize', onWindowResize, false );
-                renderer.domElement.addEventListener( 'mousedown', onMouseDown, false );
-                renderer.domElement.addEventListener( 'mouseup', onMouseUp, false );
+                var info = document.createElement('div');
+                info.style.position = 'absolute';
+                info.style.top = '10px';
+                info.style.width = '100%';
+                info.style.textAlign = 'center';
+                info.innerHTML = '<p><font color="white">Springy Planets</font></p><p><font color="white">Move: WASD, R = Rise, F = Fall/Drop, Hold Left Click = Fire planets, Hold Right Click = Capture planet</font></p>';
+                container.appendChild(info);
 
+                stats = new Stats();
+                stats.domElement.style.position = 'absolute';
+                stats.domElement.style.top = '0px';
+                container.appendChild(stats.domElement);
+
+                window.addEventListener('resize', onWindowResize, false);
+                renderer.domElement.addEventListener('mousedown', onMouseDown, false);
+                renderer.domElement.addEventListener('mouseup', onMouseUp, false);
             };
 
             function onWindowResize() {
@@ -440,6 +457,7 @@
                 planetarium.update(delta);
                 controls.update(delta);
                 renderer.render( scene, camera );
+                stats.update();
 
             };
 
