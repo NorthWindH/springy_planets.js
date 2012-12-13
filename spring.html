@@ -26,7 +26,7 @@
             var lifetime = 20, fireSpeed = 5, linearDampening = 0.5;
             var gridX = 5, gridY = 5, gridZ = 5, gridSegLength = 5, gridThickness = 0.05;
             var lgridX = 2, lgridY = 2, lgridZ = 2, lgridSegLength = 12.5, intensity = 1, distance = 12.5;
-            var holdDistance = 2;
+            var holdDistance = 2, springRestDistance = 1, springConstant = 8;
 
             var Planetarium = function(options){
                 this.lifetime = options.lifetime;
@@ -110,12 +110,32 @@
 
                     // Move object toward target
                     if (this.target) {
-                        var posSoon = focus.position.clone().addSelf(focus.velocity.clone().multiplyScalar(0.5));
+                        var posSoon = focus.position.clone().addSelf(
+                                focus.velocity.clone().multiplyScalar(0.5));
                         var force = new THREE.Vector3();
-                        force.sub(this.target, posSoon).multiplyScalar(4);
+                        force.sub(this.target, posSoon).multiplyScalar(this.constant);
 
                         // Yep, integrating velocity right here :)
                         focus.velocity.addSelf(force.multiplyScalar(delta));
+                    }
+
+                    // Simulate spring on other objects
+                    var objects = this.objects;
+                    var restDistance = this.restDistance;
+                    var constant = this.constant;
+                    for (var i = 0, end = objects.length; i < end; ++i) {
+                        var object = objects[i];
+                        if (object !== focus) {
+                            var toFocus = new THREE.Vector3().sub(
+                                    focus.position, object.position);
+                            var curDist = toFocus.length();
+                            var toEquilibrium = curDist - restDistance;
+                            if (toEquilibrium > 0) {
+                                var force = toFocus.divideScalar(curDist).
+                                        multiplyScalar(toEquilibrium * constant);
+                                object.velocity.addSelf(force.multiplyScalar(delta));
+                            }
+                        }
                     }
                 } else {
                     this.setFocus(null);
@@ -282,8 +302,8 @@
                 });
                 simulator = new SpringSimulator({
                     objects: planetarium.planets,
-                    restDistance: 1,
-                    constant: 1
+                    restDistance: springRestDistance,
+                    constant: springConstant
                 });
 
                 projector = new THREE.Projector();
