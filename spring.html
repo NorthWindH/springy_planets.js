@@ -19,7 +19,8 @@
 
         <script>
             var camera, scene, renderer, planetarium, shooter, light, grid,
-                gridLights, controls, projector, simulator, holdLight;
+                gridLights, controls, projector, simulator, holdLight,
+                collider;
             var SHADOW_MAP_WIDTH = 2048, SHADOW_MAP_HEIGHT = 1024;
             var fireCooldown = 0.25;
             var targetPos = new THREE.Vector3(0, 0, -5);
@@ -29,6 +30,7 @@
             var lgridX = 2, lgridY = 2, lgridZ = 2, lgridSegLength = 12.5, intensity = 1, distance = 12.5;
             var holdDistance = 2, springRestDistance = 1, springConstant = 8;
             var holdLightDistance = 4, holdLightColor = 0xFF9999;
+            var sphereRadius = 0.5;
             var stats;
 
             var Planetarium = function(options){
@@ -51,7 +53,7 @@
                     specularMap: specTex
                 });
 
-                this.planetGeometry = new THREE.SphereGeometry( 0.5, 32, 32 );
+                this.planetGeometry = new THREE.SphereGeometry(sphereRadius, 32, 32);
             };
 
             Planetarium.prototype.firePlanet = function(position, direction){
@@ -142,6 +144,49 @@
                     }
                 } else {
                     this.setFocus(null);
+                }
+            };
+
+            // Super simple collider, N(N+1)/2 collisions
+            var CollisionSpace = function(options){
+                this.sphereRadius = options.sphereRadius;
+                this.objects = options.objects;
+            };
+            CollisionSpace.prototype.update = function(delta){
+                var objects = this.objects;
+                var radius = this.sphereRadius;
+                var toO1 = new THREE.Vector3();
+                var axis1 = new THREE.Vector3();
+                var axis2 = new THREE.Vector3();
+                for (var i = 0, end = objects.length; i < end; ++i) {
+                    for (var j = i + 1; j < end; ++j) {
+                        var o1 = objects[i];
+                        var o2 = objects[j];
+
+                        // Do objects collide?
+                        var rad1 = radius * o1.scale.x;
+                        var rad2 = radius * o2.scale.x;
+                        var minDist = rad1 + rad2;
+                        var minDistSq = minDist * minDist;
+
+                        toO1.sub(o1.position, o2.position);
+                        var distSq = toO1.lengthSq();
+                        if (distSq < minDistSq) {
+                            // Resolve
+                            var dist = Math.sqrt(distSq);
+                            var depth = minDist - dist;
+
+                            // Move objects out
+                            axis1.copy(toO1);
+                            axis1.normalize();
+                            axis2.copy(axis1);
+                            axis2.multiplyScalar(-1);
+                            var r1r = 1 - rad1 / minDist;
+                            var r2r = 1 - rad2 / minDist;
+                            o1.position.addSelf(axis1.multiplyScalar(depth * r1r));
+                            o2.position.addSelf(axis2.multiplyScalar(depth * r2r));
+                        }
+                    }
                 }
             };
 
@@ -311,6 +356,10 @@
                     restDistance: springRestDistance,
                     constant: springConstant
                 });
+                collider = new CollisionSpace({
+                    objects: planetarium.planets,
+                    sphereRadius: sphereRadius
+                });
 
                 projector = new THREE.Projector();
                 light = new THREE.SpotLight( 0xFFFFFF, 1, 0, Math.PI, 1 );
@@ -454,6 +503,7 @@
 
                 shooter.update(delta);
                 simulator.update(delta);
+                collider.update(delta);
                 planetarium.update(delta);
                 controls.update(delta);
                 renderer.render( scene, camera );
